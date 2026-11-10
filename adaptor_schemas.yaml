@@ -1,0 +1,184 @@
+# Adaptor schema definitions for the synthetic RNA sequencing pipeline.
+
+# As our particular interest is with sequencing our Virtual Circular Genome (VCG) inserts 
+# are often referred to as 'VCG'. This simply means the sequence between the two adaptors 
+# that you are likely to care about
+
+
+# Structure:
+#   five_prime_adaptors  — define the 5' end of each read
+#   three_prime_adaptors — define the 3' adaptor structure and fixed regions
+#   read_layouts         — named combinations of one 5' + one 3' adaptor type
+#
+# Specify a read_layout name in the read_layout column of experiments.tsv.
+# Multiple experiments in the same TSV can use different layouts simultaneously.
+
+# ── 5' adaptor definitions ────────────────────────────────────────────────────
+#
+# type: fixed   → read must start with 'sequence'; validate and strip before 3' parsing
+# type: random  → take first N bases as a tag; no sequence validation
+#
+# contributes_to_umi: whether these bases form part of the deduplication key.
+#   4N random tags are NOT long enough to function reliably as UMIs.
+#   Only the MADAP 3' structure provides true UMI functionality.
+#   These columns are still recorded in parsed output for tracking purposes.
+
+five_prime_adaptors:
+
+  DEFINED:
+    description: "Fixed 5' adaptor. Read must start with what you define as the sequence."
+    type: fixed
+    sequence: "TCTA"
+    length: 4
+    contributes_to_umi: false
+    column_name: null
+
+  FOUR_N:
+    description: "4 random bases at the 5' end of the read. Used for UMI dedup."
+    type: random
+    length: 4
+    contributes_to_umi: true
+    column_name: "5_Adap"
+
+  FLUSH:
+    description: "No 5'adap is present in the read, Read 1 starts with insert sequence"
+    type: flush
+    length: 0
+    contributes_to_umi: false
+    column_name: null
+
+
+# ── 3' adaptor definitions ────────────────────────────────────────────────────
+#
+# Parsing operates on the sequence AFTER the 5' adaptor has been stripped.
+# umi_columns: columns from 3' parsing used in deduplication (only MADAP has these).
+
+three_prime_adaptors:
+
+  NORMAL:
+    description: >
+      Simplest case. Insert sits immediately 5' of the 3' adaptor trimming sequence.
+      No fixed anchor regions, no UMI.
+    read_layout_suffix: "[VCG] | 3' adaptor"
+    umi_columns: []
+    fixed_regions: {}
+
+  FOUR_N:
+    description: >
+      4 random bases immediately before the 3' adaptor sequence. VCG is everything to
+      the left of those 4 bases.
+    read_layout_suffix: "[VCG][N4: 4bp random] | 3' adaptor"
+    umi_columns: []
+    fixed_regions: {}
+
+  MADAP:
+    description: >
+      Full MADAP multiplexed library. Landmark-based shift correction handles
+      variable-length VCG inserts. The embedded TRR + IRR (8bp total in fixed
+      structural context) provide true UMI functionality for deduplication.
+    read_layout_suffix: "[VCG][TRR: 4bp][BR: AGATCG][MAC: CAA|GTT][IRR: 4bp][SP: CT] | 3' adaptor"
+    umi_columns: ["TRR", "IRR"]
+    shift_correction: true
+    landmarks_dna: ["AGATCGGTT", "AGATCGCAA"]
+    region_lengths:
+      "TRR": 4        # pre_adaptor[-19:-15]
+      "BR": 6    # pre_adaptor[-15:-9]
+      "MAC": 3 # pre_adaptor[-9:-6]
+      "IRR": 4    # pre_adaptor[-6:-2]
+      "SP": 2    # pre_adaptor[-2:]
+    fixed_regions:
+      BR:
+        dna: "AGATCG"
+      MAC:
+        dna: ["CAA", "GTT"]
+      SP:
+        dna: "CT"
+
+  PRETRIMMED:
+    description: >
+      Reads are already trimmed to the insert upstream (no 3' adaptor present
+      in the read). The whole read is taken as the VCG; no adaptor search, no UMI.
+    read_layout_suffix: "[VCG insert] (already trimmed)"
+    umi_columns: []
+    fixed_regions: {}
+
+
+# ── Read layouts — named 5' + 3' combinations ─────────────────────────────────
+#
+# full_read_layout is shown for reference; parsing is driven by the
+# five_prime_adaptors and three_prime_adaptors definitions above.
+#
+# umi_dedup_columns: columns used for PCR duplicate removal.
+#   DEFINED 5' layouts: no random 5' tag, so dedup only on MADAP UMI columns where present.
+#   FOUR_N 5' layouts: 5_Adap is always included to extend UMI space to ≥8 bases.
+
+read_layouts:
+  FLUSH_NORMAL:
+    five_prime: FLUSH
+    three_prime: NORMAL
+    description: "Flush 5' adaptor + defined 3' adaptor"
+    full_read_layout: "[VCG] | 3' adaptor"
+    umi_dedup_columns: []
+    # Per-layout cofold sequences. Fill these in for your specific library chemistry.
+    # If absent, secondary_structures.py falls back to DEFAULT_ADAPTOR_5P_EXT / DEFAULT_ADAPTOR_3P_TAIL.
+    # adaptor_5p_ext:  "GUUCAGAGUUCUACAGUCCGACGAUC"   # replace with the actual 5' library adaptor (RNA)
+    # adaptor_3p_tail: "AAUGAATC"                      # replace with the actual 3' tail (RNA)
+
+  DEFINED_NORMAL:
+    five_prime: DEFINED
+    three_prime: NORMAL
+    description: "TCTA fixed 5' adaptor + defined 3' adaptor"
+    full_read_layout: "[TCTA][VCG] | 3' adaptor"
+    umi_dedup_columns: []
+    adaptor_3p_tail: ""
+
+  DEFINED_FOUR_N:
+    five_prime: DEFINED
+    three_prime: FOUR_N
+    description: "TCTA fixed 5' adaptor + 4N region before 3' adaptor"
+    full_read_layout: "[TCTA][VCG][N4: 4bp] | 3' adaptor"
+    umi_dedup_columns: []
+    adaptor_3p_tail: ""
+
+  DEFINED_MADAP:
+    five_prime: DEFINED
+    three_prime: MADAP
+    description: "TCTA fixed 5' adaptor + MADAP 3'adaptor - can be a combination of MADAPs"
+    full_read_layout: "[TCTA][VCG][TRR][BR][MAC][IRR][CT] | 3' adaptor"
+    umi_dedup_columns: ["TRR", "IRR", "VCG"]
+
+  FOUR_N_NORMAL:
+    five_prime: FOUR_N
+    three_prime: NORMAL
+    description: "4N 5' adaptor + defined 3' adaptor"
+    full_read_layout: "[5_Adap: 4bp][VCG] | 3' adaptor"
+    umi_dedup_columns: ["5_Adap", "VCG"]
+    adaptor_3p_tail: ""
+
+  FOUR_N_FOUR_N:
+    five_prime: FOUR_N
+    three_prime: FOUR_N
+    description: "4N 5' adaptor + 4N region before 3' adaptor"
+    full_read_layout: "[5_Adap: 4bp][VCG][N4: 4bp] | 3' adaptor"
+    umi_dedup_columns: ["5_Adap", "N4", "VCG"]
+    adaptor_3p_tail: ""
+
+  FOUR_N_MADAP:
+    five_prime: FOUR_N
+    three_prime: MADAP
+    description: "4N 5' adaptor + full MADAP 3' structure (classic Ext layout)"
+    full_read_layout: "[5_Adap: 4bp][VCG][TRR][BR][MAC][IRR][CT] | 3' adaptor"
+    umi_dedup_columns: ["5_Adap", "TRR", "IRR", "VCG"]
+
+  SUPPLIER_T_POLYA:
+    five_prime: FLUSH
+    three_prime: PRETRIMMED
+    description: >
+      Supplier T (Takara SMARTer-style) polyA kit. Reads are pre-trimmed
+      externally with cutadapt (-u 3 -a AAAAAAAAAA -m 2) to remove the 3N 5'
+      prefix and the polyA 3' adapter before entering the pipeline; point
+      fastq_file at the trimmed reads. After trimming the whole read is the VCG
+      insert, so there is no 3' adaptor search and no UMI.
+    full_read_layout: "[VCG insert] (polyA and 3N removed upstream)"
+    umi_dedup_columns: []
+    # No adaptor_5p_ext / adaptor_3p_tail: secondary structures not run for this layout.

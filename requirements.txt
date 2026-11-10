@@ -1,0 +1,34 @@
+# Python requirements for the tinyRNA-seq pipeline (pip). Tested with Python 3.11.
+#
+#   pip install -r requirements.txt
+#
+# IMPORTANT: the bio track also needs command-line tools that are NOT on PyPI —
+# bowtie (v1), samtools, featureCounts (subread), perl. The opt-in cofold analysis
+# additionally needs ViennaRNA (the `RNA` module, also not on PyPI). pip alone cannot
+# install those. For a complete, reproducible setup use conda instead:
+#
+#   conda env create -f environment.yml     # installs everything below + the CLI tools
+#
+# This pip file on its own is sufficient only for the synthetic vcg/dno tracks
+# (which need no external aligners).
+#
+# For an EXACT reproduction of the validated environment, use the pinned
+# checkpoint instead:  pip install -r requirements.lock.txt
+
+# ── pipeline core ───────────────────────────────────────────────────────
+snakemake>=7
+pandas>=2.0
+numpy>=1.26
+pyyaml>=6.0
+biopython>=1.84
+cutadapt>=4.0            # used by parse_reads.py; also the supplier-kit trimming CLI
+scipy>=1.14             # spearman correlation in the comparisons module (mirna_comparison.py)
+
+# ── NOT on PyPI — install with conda (see environment.yml) ─────────────
+# Checkpoint: exact versions this pipeline was developed and validated against.
+#   viennarna 2.7.0   (RNA module, opt-in cofold_analysis)  conda install -c bioconda viennarna=2.7.0
+#   bowtie    1.3.1   (v1 aligner — bio track)   conda install -c bioconda bowtie=1.3.1
+#   samtools  1.21    (bio track)                conda install -c bioconda samtools=1.21
+#   subread   2.1.1   (featureCounts — bio)      conda install -c bioconda subread=2.1.1
+#   perl      5.32.1  (GTF parse — bio track)    conda install -c bioconda perl=5.32.1
+# Tested with Python 3.11.10, snakemake 9.13.7, cutadapt 4.9.

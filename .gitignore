@@ -1,0 +1,39 @@
+# ── Pipeline outputs ──────────────────────────────────────────────────────────
+results/*
+!results/.gitkeep
+
+# ── Input data (user-supplied, not tracked) ───────────────────────────────────
+raw_reads/*
+!raw_reads/.gitkeep
+
+# ── Reference files (download separately; see references/README.md) ───────────
+references/*
+!references/README.md
+!references/.gitkeep
+!references/build_gtf/
+!references/build_gtf/**
+
+# ── Snakemake / tooling state ─────────────────────────────────────────────────
+.snakemake/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ── Large sequencing artifacts (never commit) ─────────────────────────────────
+*.bam
+*.bai
+*.sam
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.ebwt
+*.ebwtl
+*.fa
+*.fa.fai
+*.fasta
+
+# ── OS / editor cruft ─────────────────────────────────────────────────────────
+.DS_Store
+*.swp

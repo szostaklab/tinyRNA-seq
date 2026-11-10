@@ -1,0 +1,130 @@
+# config.yaml — unified tinyRNA-seq pipeline configuration
+
+# Per-sample settings live in experiments.tsv (one row per experiment).
+
+# This file holds:
+#   defaults:   pipeline-wide defaults, overridable per-sample in the TSV
+#   organisms:  reference-file locations, keyed by the `organism` column (bio samples only)
+
+
+# Reference files are NOT shipped with this repo. Download them yourself and place
+# them where the `organisms:` entries below point. See references/README.md for the
+# expected per-organism layout. Missing/incomplete references are detected at startup
+# by scripts/references.py::validate_references() with a clear error.
+
+# ── Optional analysis modules  ─────────────────────────────
+# A default run produces the core counts:
+#   vcg/dno → normalised counts (CPM)      
+#   bio → counts.smallRNA.withCPM.tsv
+
+modules:
+  pirna_matching:      true    # assign_piRNA: assign piRNA reads by sequence match (GENCODE has no piRNA loci, so ON by default to count piRNAs)
+  sequence_annotation: false   # add_sequences: append ref/read sequences to the counts table
+  per_sample_metrics:  false   # by_type composition table + miRNA_dispersion metrics table
+  city_finder:         true    # ON by default: city_finder.tsv (ultra-short reads matched within miRNAs; needs mirna_csv)
+  comparisons:         true    # ON by default: cross-sample tables — miRNA/smallRNA CPM matrices, spearman, run_summary (needs mirna_csv; ≥1 bio sample)
+  comparison_downsample: true   # TEST: rarefied comparison on
+
+# ── Intermediate-file retention ───────────────────────────────────────────────
+# false (default) = lean: large regenerable intermediates (uncompressed .mm39.sam,
+#   pre-sort .mm39.bam / .name.bam, .collapsed.fasta, .high_quality.fastq.gz) are
+#   marked temp() and auto-deleted once consumed. Deliverables and diagnostics
+#   (BAMs you inspect, counts tables, bad_reads, collapse_stats, short_reads) are
+#   always kept. 
+# true = keep every intermediate on disk.
+# Override per-run with:  snakemake --config keep_intermediates=true
+keep_intermediates: false
+
+# ── Pipeline-wide defaults (organism-independent) ─────────────────────────────
+defaults:
+  threads: 8
+  phred_cutoff: 30
+
+  # ── bio track (genome alignment) ──
+  strandedness: 0                 # 0=unstranded, 1=stranded, 2=reverse
+  strip_versions: false           # strip .N version suffix from gene IDs
+  bowtie_extra: "-n 0 -l 5 -v 1 --best --strata -k 1 -m 1000"
+  min_read_length: 18             # reads >= go to bowtie; shorter go to city_finder
+  fc_flags: "-O --fraction"       # featureCounts flags
+  cpm_threshold: 1.0              # CPM detection floor for reporting
+
+  # piRNA sequence-assignment length gate (assign_piRNA.py)
+  pirna_min_len: 24
+  pirna_max_len: 32
+
+  # city_finder internal length window (applied to short_reads)
+  city_finder_min_len: 12
+  city_finder_max_len: 15
+  city_finder_mismatches: 0
+
+  # cofold analysis (opt-in per sample via cofold_analysis=yes)
+  cofold_temperature: 16.0        # °C, ViennaRNA RNA.cvar.temperature (ligation runs at 16 °C);
+                                  #      override per sample with a cofold_temperature column in experiments.tsv
+
+  # rarefied comparison (module: comparison_downsample). Downsamples aligned reads to a
+  # common depth and re-counts, for a depth-fair copy of the bio comparison.
+  comparison_depth: 300000        # TEST: fixed 300K target
+  comparison_keep_below: true     # keep samples below target at native depth (do not drop them)
+  downsample_seed: 13             # fixed seed -> reproducible rarefaction
+  # cityRNA is rarefied on its OWN denominator (sub-18 nt reads scanned, not mapped depth):
+  city_finder_depth: auto         # 'auto' = smallest short-read pool | integer N | a bio sample name
+
+  small_rna_types:
+    - miRNA
+    - piRNA
+    - snoRNA
+    - snRNA
+    - tRNA
+    - Mt_tRNA
+    - rRNA
+    - Mt_rRNA
+    - Y_RNA
+    - vaultRNA
+    - scaRNA
+    - misc_RNA
+    # RepeatMasker-derived classes (require the typed GTF, e.g. merged.typed.mm39.gtf;
+    # ignored if the GTF doesn't define them). rRNA above already captures the rDNA repeats.
+    - scRNA
+    - srpRNA
+    - SINE
+    - LINE
+    - LTR
+    - DNA
+    - Retroposon
+    - RC
+    # Likely low-complexity / tandem-repeat artefacts — delete these 5 if you don't want
+    # them in the counts table (they stay in the GTF either way):
+    - Simple_repeat
+    - Low_complexity
+    - Satellite
+    - Unknown
+    - Unspecified
+  
+# ── Organism reference sets (bio samples only) ────────────────────────────────
+# The `organism` column in experiments.tsv selects one of these blocks.
+# Always required for a bio sample:  bowtie_index, gtf.
+# Required only by the module that uses them (checked at startup only when on):
+#   pirna_refs   — pirna_matching (ON by default)
+#   mirna_csv    — city_finder (ON by default) or comparisons
+#   genome_fasta (+ .fai) — sequence_annotation (off by default)
+#
+# bowtie_index is a PREFIX; the 6 files <prefix>.{1,2,3,4,rev.1,rev.2}.ebwt must exist.
+# genome_fasta must have a samtools faidx index alongside it (<fasta>.fai).
+# gtf is located by presence, not filename: if the exact path below is not a file, the
+# single .gtf/.gtf.gz in that directory is used (any name). Keep only one GTF in the
+# directory, or set gtf to the exact file if several are present.
+organisms:
+  mouse:
+    bowtie_index: references/mouse/mm39
+    gtf:          references/mouse/mm39.gtf        # or any single *.gtf in references/mouse/
+    genome_fasta: references/mouse/mm39.fa
+    pirna_refs:                                   # required by default (pirna_matching on)
+      - references/mouse/mmu.gold.fa.gz
+      - references/mouse/piRNAdb.mmu.v1_7_6.fa.gz
+    mirna_csv:    references/mouse/mm39.brain.mirna.filtered.csv   # required by default (city_finder on) + miRNA comparison
+
+  # Add further organisms by copying the block above and pointing at your files, e.g.:
+  # human:
+  #   bowtie_index: references/human/hg38
+  #   gtf:          references/human/hg38.gtf
+  #   genome_fasta: references/human/hg38.fa

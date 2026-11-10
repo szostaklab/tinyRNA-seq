@@ -1,0 +1,18 @@
+# Checkpoint lock file for the tinyRNA-seq pipeline — EXACT versions this
+# pipeline was developed and validated against. Use for reproducing the
+# reference environment; use requirements.txt (loose pins) for normal installs.
+#
+#   pip install -r requirements.lock.txt
+#
+# Captured on Python 3.11.10. NOTE: the non-PyPI CLI tools (bowtie 1.3.1,
+# samtools 1.21, subread/featureCounts 2.1.1, viennarna 2.7.0, perl 5.32.1)
+# are NOT covered here — install those via environment.yml (conda).
+
+# ── pipeline core ───────────────────────────────────────────────────────
+snakemake==9.13.7
+pandas==2.2.3
+numpy==1.26.4
+pyyaml==6.0.2
+biopython==1.84
+cutadapt==4.9
+scipy==1.14.1           # spearman in the comparisons module

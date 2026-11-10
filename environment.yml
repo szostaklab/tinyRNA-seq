@@ -1,0 +1,40 @@
+# Conda environment for the tinyRNA-seq pipeline.
+#
+#   conda env create -f environment.yml
+#   conda activate tinyrna-seq
+#
+# Then run:  snakemake --cores 8
+#
+# (For a pip install of just the Python packages see requirements.txt.)
+
+name: tinyrna-seq
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python >=3.11            # developed/validated on 3.11.10
+  - snakemake >=7            # validated on 9.13.7
+
+  # ── core command-line tools (NOT available via pip; bio track) ──────────────
+  # Versions pinned to the checkpoint the pipeline was validated against.
+  # Relax the pins (e.g. `- bowtie`) if you need newer builds for your platform.
+  - bowtie =1.3.1            # Bowtie1 aligner — bio track (note: NOT bowtie2)
+  - samtools =1.21           # BAM handling — bio track
+  - subread =2.1.1           # provides featureCounts — bio track
+  - cutadapt =4.9            # supplier-kit trimming + used inside parse_reads.py
+  - perl =5.32.1             # gene_info_from_gtf GTF parse (bio track)
+
+  # ── python stack ────────────────────────────────────────────────────────────
+  - pandas >=2.0
+  - numpy >=1.26
+  - biopython >=1.84
+  - pyyaml >=6.0
+  - scipy >=1.14             # spearman in the comparisons module (mirna_comparison.py)
+  - viennarna =2.7.0         # RNA module: required for opt-in cofold_analysis tables (first_ligation_cofold.py, secondary_structures.py)
+
+# Exported on `conda activate tinyrna-seq`. Forces Python UTF-8 mode so log/print
+# output (→, °C, box-drawing, etc.) is written as UTF-8 regardless of the machine
+# locale — otherwise a C/POSIX or ASCII locale (common in SLURM/cron/Docker jobs)
+# makes Python default to ASCII and crashes with UnicodeEncodeError.
+variables:
+  PYTHONUTF8: "1"
